@@ -1,6 +1,13 @@
 <?php
-session_start();
-
+/**
+ * One file installer
+ *
+ * @author		Andrej Sevastianov
+ * @copyright	Copyright (c) 2012
+ * @since		Version 0.1
+ * @filesource
+ */
+ 
 class Installer extends One
 {
 	protected
@@ -12,23 +19,30 @@ class Installer extends One
 	{
 		// Первый вызов инициализирует слежение за временным лимитом
 		parent::wotch_dog();
+		
+		session_start();
 		$this->title = 'Installer v0.1';
-		$this->logo = '';
-	//	$this->menu = array('index'=>'Pack');
+		
+		// Вызов родителя начинает исполнение
 		parent::__construct();
 	}
 	
 	public function indexAction()
 	{
-		
-		?><h1>Создание автоматического архива</h1><form action="installer.php?action=run" method="post">
-		<p><label>Папка для сохранения:</label><input type="text" name="dir" value="<?php echo $this->fileDir; ?>" /></p>
-		<p><label>Имя файла:</label><input type="text" name="name" value="<?php echo $this->fileName; ?>" />.php</p>
-		<p><label>Исключить:</label><textarea name="exceptions" cols="60" rows="3"><?php echo $this->exceptions; ?></textarea></p>
-		<div class="fl" style="padding: 8px 20px;"><input type="submit" value="Создать" class="button" style="padding: 6px 14px;"></div>
-		<div><p><strong>Внимание!</strong><br>Процесс упаковки может занять определенное время.<br />
-		Не закрывайте и не перезагужайте страницу браузера после старта!</p></div>
-		</form><?php
+		if ( isset($_SESSION['map']) AND count($_SESSION['map']) == 0)
+		{
+			$this->error('Нет файлов для архивации');
+			unlink($_SESSION['fileName']);
+			unset($_SESSION['map'], $_SESSION['fileName']);
+		}
+		?><h1>Создание автоматического архива</h1><form action="installer.php?action=run" method="post"><?php
+		?><p><label>Папка для сохранения:</label><input type="text" name="dir" value="<?php echo $this->fileDir; ?>" /></p><?php
+		?><p><label>Имя файла:</label><input type="text" name="name" value="<?php echo $this->fileName; ?>" />.php</p><?php
+		?><p><label>Исключить:</label><textarea name="exceptions" cols="60" rows="3"><?php echo $this->exceptions; ?></textarea></p><?php
+		?><div class="fl" style="padding: 8px 20px;"><input type="submit" value="Создать" class="button" style="padding: 6px 14px;"></div><?php
+		?><div><p><strong>Внимание!</strong><br>Процесс упаковки может занять определенное время.<br /><?php
+		?>Не закрывайте и не перезагужайте страницу браузера после старта!</p></div><?php
+		?></form><?php
 	}
 	
 	public function runAction()
@@ -53,54 +67,23 @@ class Installer extends One
 		$this->exceptions = $_SESSION['exeptions'] = $_POST['exceptions'];
 		$_SESSION['fileName'] = $this->fileDir.$this->fileName.'.php';
 		
+		// Создаем файл
 		$fp = fopen($_SESSION['fileName'], 'w');
 		fwrite($fp, '<?php'.PHP_EOL);
+		fwrite($fp, 'function b($k,$c){if($c===0)mkdir($k,0777,true); else file_put_contents($k,bzdecompress(base64_decode($c)));}');
 		fclose($fp);
+		
+		/**
+		 * Сценарий архивации полностью контролируется JS!!
+		 **/
 		?><h1 id="step">Архив создается...</h1>
-	<style>
-
-
-		.progress {
-  height: 20px; /* Можно любую */
-  position: relative;
-  background: #fff;
-  -webkit-border-radius: 6px;border-radius: 6px;
-  border: 1px #CECECE solid;
-  padding: 2px;
-}
-
-.progress > span {
-	-webkit-border-radius: 4px;border-radius: 4px;
-  display: block;
-  height: 100%;
-  position: relative;
-  top:-16px;
-  overflow: hidden;
-  background: #D2FF52;
-  z-index: 5;
-}
-.progress > div{position: relative;text-align:center;z-index: 10;font-weight: bold;}
-</style>		
-		<div class="progress" id="progress">
-		  <div class="status">? / ?</div>
-		  <span style="width: 1%"></span>
-		  
-		</div>
-
-		<div id="log"></div>
-		<script>
-		$(function(){
-			var progress = {
-				setText: function(text){ $('#progress > div').html(text); },
-				setPercent: function(p){ $('#progress > span').width(p+'%'); },
-			}
-			
+		
+		<div class="progress"><div class="status">? / ?</div><span style="width: 8px"></span></div>
+		<div class="clearfix"></div>
+		<script>(function(){
 			var install = {
-				
 				uri: 'installer.php',
-				step: 1,
-				mapCountTotal:0,
-				mapCurrent: 0,
+				step:1,mapCountTotal:0,mapCurrent:0,
 				
 				run: function(){
 					switch(install.step)
@@ -113,26 +96,27 @@ class Installer extends One
 				},
 				setTitle: function(title){ $('#step').html(title); },
 				
-				setMapCount: function(c, t){
-					if ( t >= 0) this.mapCountTotal = t;
+				setMapCount: function(c){
 					if ( c > this.mapCountTotal ) c = this.mapCountTotal;
-					progress.setText(c + ' / ' + this.mapCountTotal);
-					
-					progress.setPercent(( ( 90 / this.mapCountTotal ) * c) + 5 );
+					$('.progress').progress({text: c + ' / ' + this.mapCountTotal, percent:( ( 90 / this.mapCountTotal ) * c) + 5 });
 				},
 				
 				step_1: function()
 				{
 					install.setTitle('Шаг 1: Создание карты файлов...');
 					
-					$.get( install.uri, { action: "map" }, function(e){
-						progress.setPercent(5);
-						e = parseInt(e);
-						if ( e > 0 )
-						{
-							install.setMapCount(0, e);
+					$.get( install.uri, { action: "map" }, function(d){
+						$('.progress').progress({percent:5});
+						e = parseInt(d);
+						if ( e === 0 ){
+							document.location = '?action=index';
+						} else if ( e > 0) {
+							install.mapCountTotal = e;
+							install.setMapCount(0);
 							install.step = 2;
 							install.run();
+						} else {
+							install.setTitle(d);
 						}
 					});
 				},
@@ -156,32 +140,32 @@ class Installer extends One
 				step_3: function()
 				{
 					install.setTitle('Шаг 3: Завершение...');
-					progress.setPercent(100);
+					$('.progress').progress({percent:100});
 					install.step = 4;
-							install.run();
+					install.run();
 				},
 				
 				step_4: function()
 				{
-					install.setTitle('Архив создан!');
-					$('.pbar').hide();
+					install.setTitle('Действие завершено!');
+					//$('#step').after('<p><a href="?action=index">&larr; Вернуться</a></p>');
+					//$('.progress').after('<p><a href="?action=download" class="button">Скачать: <?php echo $this->fileName;?>.php</a></p>');
+					$('.progress').after('<p><h3>Автоматический архив создан!</h3>Теперь вы можете скачать его по FTP.</p><p><a href="?action=index">&larr; Вернуться</a></p>');
 				}
 			}
 			
 			install.run();
-		});
-		
-		</script>
-		
-		<?php
+		})();
+		</script><?php
 	}
 	
 	public function mapAction()
 	{
 		$this->exceptions = explode(' ', str_replace('*','.*', str_replace('.','\.', $_SESSION['exeptions'])));
 		$_SESSION['map'] = $this->loadmap();
-		
+
 		echo count($_SESSION['map']);
+		var_dump($_SESSION['map']);
 		die();
 	}
 	
@@ -197,12 +181,18 @@ class Installer extends One
 					if ( preg_match('/^('.$pattern.')$/i', $entry) ) continue 2;
 
 				$entry = rtrim($patch, '/').'/'.$entry;
+				if ( $entry == $_SESSION['fileName'] ) continue;
+				
 				if ( is_dir($entry) )
 				{
 					$map[] = array('d', $entry);
 					$map = $this->loadmap($entry, $map);
 				} else if ( is_file($entry) )
 				{
+					if ( filesize($entry) > 20971520 )
+					{
+						die($entry.' слишком большой ('.(round(filesize($entry) / 1048576, 2)).' MB)');
+					}
 					$map[] = array('f', $entry);
 				}
 			}
@@ -214,6 +204,7 @@ class Installer extends One
 	
 	public function createAction()
 	{
+		set_time_limit(120);	
 		$this->start = (int) $_GET['start'];
 		$total = count($_SESSION['map']);
 		$map = $_SESSION['map'];
@@ -227,14 +218,11 @@ class Installer extends One
 				$content = 'b(\''.$map[$this->start][1].'\',\''.base64_encode(bzcompress(file_get_contents($map[$this->start][1]), 9)).'\');'.PHP_EOL;
 			} else {
 				$content = 'b(\''.$map[$this->start][1].'\',0);'.PHP_EOL;
-				//$content[$map[$this->start][1]] = null;
-				//$content .= '$a[\''.$map[$this->start][1].'\']=null;'.PHP_EOL;
 			}
 			fwrite($fp, $content);
-			//$this->wotch_dog();
+			unset($content);
+			$this->wotch_dog();
 		}
-		// fwrite($fp, 'foreach($a as $k=>$c){if($c===0)mkdir($k,0777,true); else file_put_contents($k,bzdecompress(base64_decode($c)));}');
-		fwrite($fp, 'function b($k,$c){if($c===0)mkdir($k,0777,true); else file_put_contents($k,bzdecompress(base64_decode($c)));}');
 		
 		fclose($fp);
 		return $this->createTimeout();
@@ -253,8 +241,7 @@ class One
 {
 	protected
 		$action,
-		$title = 'One file admin',
-		$logo = 'Central Panel',
+		$title = 'One file admin', $logo,
 		$menu = array(),
 		
 		$timeStart, $timeLimit = 1;
@@ -329,8 +316,10 @@ form p{border-bottom: 1px dashed #CECECE; padding-bottom:12px;}
 .copy{color:#999;font-size:10px;margin: 8px;}
 .copy a, .copy strong{color:#666;font-weight:normal;text-decoration:underline}
 .copy img{opacity:.4}
-
-
+/*---ProgressBar----*/
+.progress{height:20px;position:relative;background:#fff;border:1px #CECECE solid;-webkit-border-radius:6px;border-radius:6px;padding:2px}
+.progress>span{display:block;height:100%;position:relative;top:-16px;overflow:hidden;background:#D2FF52;-webkit-border-radius:4px;border-radius: 4px;z-index:5}
+.progress>div{position:relative;text-align:center;z-index:10;font-weight:bold}
 /*---- clearfix ----*/
 .clearfix:after {content: "."; display: block; clear: both;	visibility: hidden;	line-height: 0;	height: 0;}
 .clearfix {display: inline-block;}
@@ -339,6 +328,17 @@ html[xmlns] .clearfix {display: block;}
 .ok, .error,#content, #navbar a{border-radius:3px;-moz-border-radius:3px;-webkit-border-radius:3px}
 </style>
 <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+<script>
+(function($) {
+	$.fn.progress = function(opt){
+		if ( opt.text )
+			$(this).children('div').html(opt.text);
+		if ( opt.percent )
+			$(this).children('span').animate({width: (opt.percent*(this.width() / 100))}, 200);	
+		return this;
+	}
+})(jQuery);
+</script>
 </head>
 <body>
 <div class="main">
